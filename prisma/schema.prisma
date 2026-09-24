@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Season {
+  id        String   @id @default(cuid())
+  name      String
+  isActive  Boolean  @default(false)
+  // Temporada congelada: la tabla no se calcula de Match/MatchPlayer, se
+  // muestran los LegacyStanding tal cual (para torneos viejos con otro
+  // sistema de puntos, ej. Apertura 2025 que usaba 3/2/1 en vez de 3/1/0).
+  isLegacy  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  matches   Match[]
+  legacyStandings LegacyStanding[]
+}
+
+model LegacyStanding {
+  id         String @id @default(cuid())
+  season     Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  seasonId   String
+  playerName String
+  points     Int
+  played     Int
+  won        Int
+  lost       Int
+  drawn      Int
+
+  @@index([seasonId])
+}
+
+model Player {
+  id        String        @id @default(cuid())
+  name      String
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  matches   MatchPlayer[]
+}
+
+enum MatchResult {
+  A
+  B
+  DRAW
+}
+
+model Match {
+  id        String        @id @default(cuid())
+  date      DateTime
+  result    MatchResult
+  season    Season        @relation(fields: [seasonId], references: [id])
+  seasonId  String
+  players   MatchPlayer[]
+  createdAt DateTime      @default(now())
+
+  @@index([seasonId])
+}
+
+enum Team {
+  A
+  B
+}
+
+model MatchPlayer {
+  id       String @id @default(cuid())
+  match    Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId  String
+  player   Player @relation(fields: [playerId], references: [id])
+  playerId String
+  team     Team
+
+  @@unique([matchId, playerId])
+  @@index([playerId])
+}
