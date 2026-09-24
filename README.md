@@ -114,29 +114,60 @@ Para cargar todo esto en tu base:
 npx prisma db seed
 ```
 
-## Deploy en Vercel
+## Deploy en Vercel + Neon (base creada a mano)
 
-Esta parte requiere que crees vos las cuentas (no puedo hacerlo por vos):
+Este proyecto usa una base de Neon creada directamente en neon.tech, no la
+integracion "Postgres" del marketplace de Vercel — por eso hay que copiar las
+connection strings a mano.
 
-1. **Subí el repo a GitHub** y creá un proyecto nuevo en Vercel importándolo.
-2. **Agregá una base Postgres**: en el proyecto de Vercel, pestaña *Storage* →
-   *Create Database* → Postgres (Neon). Esto define `DATABASE_URL`
-   automáticamente en las variables de entorno del proyecto.
-3. **Variables de entorno** (Vercel → Settings → Environment Variables):
-   `SESSION_SECRET` (una tira random larga), `ADMIN_USERNAME`,
-   `ADMIN_PASSWORD_HASH`, `PLAYER_USERNAME`, `PLAYER_PASSWORD_HASH` (los hashes
-   se pegan **sin** escapar el `$`, a diferencia del `.env` local).
-4. **Migrar la base de producción** (una sola vez, desde tu máquina, apuntando
-   al `DATABASE_URL` de Neon que copiaste de Vercel — como es una base nueva,
-   `migrate dev` le crea la carpeta `prisma/migrations` de una sin problemas):
+1. **Creá el proyecto en Neon** (neon.tech, si todavia no lo hiciste) y andá a
+   *Connection Details*. Neon te da dos connection strings distintas para la
+   misma base:
+   - **Pooled** (host termina en `-pooler.<region>.aws.neon.tech`): la que va
+     a usar la app en runtime, en Vercel.
+   - **Direct** (mismo host sin `-pooler`): usala solo para correr
+     migraciones — evita problemas del connection pooler con el DDL.
+
+   Ambas ya traen `sslmode=require`, no hay que tocarlas.
+
+2. **Migrá la base de Neon desde tu máquina**, pasándole la connection string
+   **directa** como `DATABASE_URL` (una sola vez; como es una base nueva,
+   `migrate dev` genera `prisma/migrations` de una sin el problema del shadow
+   database que tuvimos en local):
    ```bash
-   DATABASE_URL="postgresql://...neon..." npx prisma migrate dev --name init
-   DATABASE_URL="postgresql://...neon..." npx prisma db seed   # opcional, carga el historial
+   DATABASE_URL="postgresql://...directa (sin -pooler)...neon.tech/..." \
+   npx prisma migrate dev --name init
+
+   # opcional, carga las 4 temporadas de historial:
+   DATABASE_URL="postgresql://...directa (sin -pooler)...neon.tech/..." \
+   npx prisma db seed
    ```
-   Después de esto, sí conviene commitear la carpeta `prisma/migrations`
-   generada para que quede el historial versionado.
-5. **Deploy**. El script `postinstall` corre `prisma generate` automáticamente
-   en cada build de Vercel, así que no hace falta nada más.
+   Commiteá y pusheá la carpeta `prisma/migrations` que se generó — sin eso,
+   el repo no tiene forma de recrear el esquema en otra base.
+
+3. **Creá el proyecto en Vercel** importando este repo de GitHub
+   (`SantiagoRibot96/Futbol-de-los-jueves`).
+
+4. **Variables de entorno** (Vercel → Settings → Environment Variables, en
+   Production — y en Preview/Development si vas a usar esos ambientes):
+   - `DATABASE_URL`: la connection string **pooled** de Neon (la directa es
+     solo para cuando corras migraciones a mano desde tu máquina, no hace
+     falta cargarla en Vercel).
+   - `SESSION_SECRET`: una tira random larga (ej. `openssl rand -hex 32`).
+   - `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `PLAYER_USERNAME`,
+     `PLAYER_PASSWORD_HASH`: los hashes se pegan **sin** escapar el `$`, a
+     diferencia del `.env` local (esa pantalla no pasa por el parser de
+     `.env` de Next.js).
+
+5. **Deploy**. El script `postinstall` corre `prisma generate`
+   automáticamente en cada build de Vercel, así que con pushear a `main`
+   (o darle "Deploy" desde el dashboard) alcanza.
+
+Para el día que cambies el schema (`prisma/schema.prisma`), el flujo es:
+correr `DATABASE_URL="...directa..." npx prisma migrate dev --name <lo que sea>`
+apuntando a Neon, commitear la migración nueva, y pushear — Vercel no corre
+migraciones solo, así que hacé esto antes de que el código nuevo llegue a
+producción si el cambio de schema es incompatible con el código viejo.
 
 ## Estructura
 
